@@ -1,50 +1,91 @@
 import streamlit as st
-from langchain_openai import OpenAI
-from langchain.chains import ConversationalRetrievalChain
-from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+import os
+from openai import OpenAI
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
-# ---- Setup ----
+# ---- Config ----
 st.set_page_config(page_title="Kotaro Amon - TerraLens Bot", layout="centered")
 st.title("🏡 Kotaro Amon - TerraLens AI Assistant")
 
-# Placeholder knowledge base (replace with scraped TerraLens data)
+# OpenAI Client
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# ---- Knowledge Base ----
 documents = [
-    ("TerraLens is a Real Estate Investment company specializing in Bangalore, Pune, and Mumbai."),
-    ("We help investors find profitable residential and commercial properties."),
-    ("Contact us at rinzler208@gmail.com or call +91 78230 10892."),
-    ("We offer property consultation and appointment booking for site visits."),
+    "TerraLens is a Real Estate Investment company specializing in Bangalore, Pune, and Mumbai.",
+    "We help investors find profitable residential and commercial properties.",
+    "Contact us at rinzler208@gmail.com or call +91 78230 10892.",
+    "We offer property consultation and appointment booking for site visits."
 ]
 
-# Embedding & Vector Store
-embeddings = OpenAIEmbeddings()
-vectorstore = FAISS.from_texts(documents, embeddings)
-retriever = vectorstore.as_retriever()
+# Create embeddings
+doc_embeddings = []
+for doc in documents:
+    emb = client.embeddings.create(model="text-embedding-3-small", input=doc)
+    doc_embeddings.append(emb.data[0].embedding)
+doc_embeddings = np.array(doc_embeddings)
 
-qa = ConversationalRetrievalChain.from_llm(
-    OpenAI(temperature=0),
-    retriever=retriever,
-)
-
-# ---- Chat UI ----
+# ---- Session State ----
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
+if "lead_captured" not in st.session_state:
+    st.session_state["lead_captured"] = False
+if "user_email" not in st.session_state:
+    st.session_state["user_email"] = None
+if "user_phone" not in st.session_state:
+    st.session_state["user_phone"] = None
 
-st.write("👋 Hi there! Welcome to TerraLens. Ask me anything about real estate investments.")
+# ---- Greeting ----
+if not st.session_state["messages"]:
+    st.session_state["messages"].append({"role": "assistant", "content": "👋 Hi there! Welcome to TerraLens. I’m Kotaro Amon. How can I help you today?"})
 
+# ---- Show chat history ----
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if user_input := st.chat_input("Type your question..."):
+# ---- Handle input ----
+if user_input := st.chat_input("Type your message..."):
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    result = qa({"question": user_input, "chat_history": st.session_state.messages})
-    bot_reply = result["answer"]
+    # Lead capture logic
+    if not st.session_state["lead_captured"]:
+        # Ask for email
+        if st.session_state["user_email"] is None:
+            st.session_state["user_email"] = user_input
+            st.session_state.messages.append({"role": "assistant", "content": "📧 Thanks! Could you also share your phone number so we can follow up?"})
+            with st.chat_message("assistant"):
+                st.markdown("📧 Thanks! Could you also share your phone number so we can follow up?")
+            continue
 
+        # Ask for phone
+        elif st.session_state["user_phone"] is None:
+            st.session_state["user_phone"] = user_input
+            st.session_state["lead_captured"] = True
+            st.session_state.messages.append({"role": "assistant", "content": "✅ Got it! Thanks for sharing your details. Now, how can I assist you with real estate?"})
+            with st.chat_message("assistant"):
+                st.markdown("✅ Got it! Thanks for sharing your details. Now, how can I assist you with real estate?")
+            continue
+
+    # ---- Knowledge Retrieval ----
+    q_emb = client.embeddings.create(model="text-embedding-3-small", input=user_input).data[0].embedding
+    sims = cosine_similarity([q_emb], doc_embeddings)[0]
+    best_doc = documents[int(np.argmax(sims))]
+
+    # ---- Ask GPT ----
+    prompt = f"You are Kotaro Amon, a real estate assistant for TerraLens. Use this context:\n{best_doc}\n\nUser: {user_input}\nAnswer:"
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "system", "content": "You are a helpful assistant for TerraLens real estate customers."},
+                  {"role": "user", "content": prompt}]
+    )
+    bot_reply = completion.choices[0].message.content
+
+    # ---- Show response ----
     st.session_state.messages.append({"role": "assistant", "content": bot_reply})
     with st.chat_message("assistant"):
         st.markdown(bot_reply)
-
