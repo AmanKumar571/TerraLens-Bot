@@ -10,7 +10,8 @@ st.title("🏡 Kotaro Amon - TerraLens AI Assistant")
 
 # OpenAI Client
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI()
+
 
 # ---- Knowledge Base ----
 documents = [
@@ -93,3 +94,4 @@ if user_input := st.chat_input("Type your message..."):
     st.session_state.messages.append({"role": "assistant", "content": bot_reply})
     with st.chat_message("assistant"):
         st.markdown(bot_reply)
+
