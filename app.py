@@ -39,7 +39,9 @@ if "user_phone" not in st.session_state:
 
 # ---- Greeting ----
 if not st.session_state["messages"]:
-    st.session_state["messages"].append({"role": "assistant", "content": "👋 Hi there! Welcome to TerraLens. I’m Kotaro Amon. How can I help you today?"})
+    st.session_state["messages"].append(
+        {"role": "assistant", "content": "👋 Hi there! Welcome to TerraLens. I’m Kotaro Amon. How can I help you today?"}
+    )
 
 # ---- Show chat history ----
 for msg in st.session_state.messages:
@@ -54,22 +56,22 @@ if user_input := st.chat_input("Type your message..."):
 
     # Lead capture logic
     if not st.session_state["lead_captured"]:
-        # Ask for email
         if st.session_state["user_email"] is None:
             st.session_state["user_email"] = user_input
-            st.session_state.messages.append({"role": "assistant", "content": "📧 Thanks! Could you also share your phone number so we can follow up?"})
+            reply = "📧 Thanks! Could you also share your phone number so we can follow up?"
+            st.session_state.messages.append({"role": "assistant", "content": reply})
             with st.chat_message("assistant"):
-                st.markdown("📧 Thanks! Could you also share your phone number so we can follow up?")
-            continue
+                st.markdown(reply)
+            st.stop()
 
-        # Ask for phone
         elif st.session_state["user_phone"] is None:
             st.session_state["user_phone"] = user_input
             st.session_state["lead_captured"] = True
-            st.session_state.messages.append({"role": "assistant", "content": "✅ Got it! Thanks for sharing your details. Now, how can I assist you with real estate?"})
+            reply = "✅ Got it! Thanks for sharing your details. Now, how can I assist you with real estate?"
+            st.session_state.messages.append({"role": "assistant", "content": reply})
             with st.chat_message("assistant"):
-                st.markdown("✅ Got it! Thanks for sharing your details. Now, how can I assist you with real estate?")
-            continue
+                st.markdown(reply)
+            st.stop()
 
     # ---- Knowledge Retrieval ----
     q_emb = client.embeddings.create(model="text-embedding-3-small", input=user_input).data[0].embedding
@@ -80,8 +82,10 @@ if user_input := st.chat_input("Type your message..."):
     prompt = f"You are Kotaro Amon, a real estate assistant for TerraLens. Use this context:\n{best_doc}\n\nUser: {user_input}\nAnswer:"
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "system", "content": "You are a helpful assistant for TerraLens real estate customers."},
-                  {"role": "user", "content": prompt}]
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant for TerraLens real estate customers."},
+            {"role": "user", "content": prompt}
+        ]
     )
     bot_reply = completion.choices[0].message.content
 
